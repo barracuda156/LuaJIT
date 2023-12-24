@@ -9,7 +9,7 @@
 #include "buildvm.h"
 #include "lj_bc.h"
 
-#if LJ_TARGET_WINDOWS || LJ_TARGET_CYGWIN
+#if LJ_TARGET_WINDOWS || LJ_TARGET_CYGWIN || LJ_TARGET_PPC
 
 /* Context for PE object emitter. */
 static char *strtab;
@@ -104,6 +104,12 @@ typedef struct PEsymaux {
 #define PEOBJ_TEXT_FLAGS	0x60500020  /* 60=r+x, 50=align16, 20=code. */
 #define PEOBJ_PDATA_NRELOC	4
 #define PEOBJ_XDATA_SIZE	(4+24+4 +4+8)
+#elif LJ_TARGET_PPC
+#define PEOBJ_ARCH_TARGET	0x01f2
+#define PEOBJ_RELOC_REL32	0x06
+#define PEOBJ_RELOC_DIR32	0x02
+#define PEOBJ_RELOC_OFS		(-4)
+#define PEOBJ_TEXT_FLAGS	0x60400020  /* 60=r+x, 40=align8, 20=code. */
 #endif
 
 /* Section numbers (0-based). */
@@ -259,8 +265,15 @@ void emit_peobj(BuildCtx *ctx)
   /* Write .text section. */
   host_endian.u = 1;
   if (host_endian.b != LJ_ENDIAN_SELECT(1, 0)) {
+#if LJ_TARGET_PPC
+    uint32_t *p = (uint32_t *)ctx->code;
+    int n = (int)(ctx->codesz >> 2);
+    for (i = 0; i < n; i++, p++)
+      *p = lj_bswap(*p);  /* Byteswap .text section. */
+#else
     fprintf(stderr, "Error: different byte order for host and target\n");
     exit(1);
+#endif
   }
   owrite(ctx, ctx->code, ctx->codesz);
   for (i = 0; i < ctx->nreloc; i++) {
